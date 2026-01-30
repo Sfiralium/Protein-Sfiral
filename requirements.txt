@@ -1,4 +1,5 @@
-py3dmol==2.4.2
-biopython>=1.81
+streamlit
 numpy
-# Force Rebuild 001
+pandas
+biopython
+py3dmol
