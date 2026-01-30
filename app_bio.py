@@ -1,135 +1,136 @@
 import streamlit as st
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import pandas as pd
-import plotly.graph_objects as go
+import py3dmol
+from Bio.Seq import Seq
 import numpy as np
-import os
 
-# --- 1. НАСТРОЙКИ ---
-st.set_page_config(page_title="NeuroSfiral BIO", layout="wide", page_icon="🧬")
-st.title("🧬 NEURO-SFIRAL: PROTEIN FOLDING")
-st.caption("Visualization of Fractal Sfiral Neural Network (FSIN) Predictions")
+# --- НАСТРОЙКИ ---
+st.set_page_config(page_title="Sfiral Protein Lab", layout="wide", page_icon="🧬")
 
-# --- 2. МОДЕЛЬ (Та же самая, что дала 89%) ---
-class FsinCell(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.plus = nn.Linear(dim, dim)
-        self.minus = nn.Linear(dim, dim)
-        self.act = nn.LeakyReLU()
-    def forward(self, x):
-        return self.act(self.plus(x)) + (-self.act(self.minus(x)))
+# --- СТИЛИ ---
+st.markdown("""
+<style>
+    .stApp {background-color: #0e1117; color: #fff;}
+    h1 {color: #00CCFF;}
+    .report {background: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d;}
+</style>
+""", unsafe_allow_html=True)
 
-class BioModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.emb = nn.Embedding(25, 64)
-        self.fsin = FsinCell(64)
-        self.head = nn.Linear(64, 3)
-    def forward(self, x):
-        return self.head(self.fsin(self.emb(x))).permute(0,2,1)
+st.title("🧬 Protein-Sfiral: Time-Genetics Folding")
+st.caption("Testing the Kushelev Hypothesis: Same Amino Acids -> Different Geometry (CDS-driven)")
 
-# --- 3. ЗАГРУЗКА И ОБУЧЕНИЕ (Кэшируем, чтобы было быстро) ---
-@st.cache_resource
-def load_and_train():
-    if not os.path.exists('protein.csv'):
-        os.system("wget -O protein.csv https://raw.githubusercontent.com/yasirbarlas/protein-secondary-structure-prediction/main/datasets/prot-seq-filtered.csv")
+# --- 1. ТЕОРИЯ ВРЕМЯГЕНЕТИКИ (БАЗА ЗНАНИЙ) ---
+# Здесь мы задаем "Углы Времени". 
+# Обычная наука считает, что AAA и AAG - это одно и то же (Лизин).
+# Мы говорим: Нет! У них разная энергетика и фаза.
+
+TIME_GENETICS_MAP = {
+    # ЛИЗИН (Lys / K) - Пример Кушелева
+    'AAA': {'aa': 'K', 'phi': -65, 'psi': -40, 'delay': 1.0, 'note': 'Fast (Pi-Helix)'},
+    'AAG': {'aa': 'K', 'phi': -57, 'psi': -47, 'delay': 1.5, 'note': 'Slow (Alpha-Helix)'},
     
-    df = pd.read_csv('protein.csv').iloc[:500, [0, 1]].dropna() # Берем 500 для скорости демо
-    aa_map = {c: i+1 for i, c in enumerate("ACDEFGHIKLMNPQRSTVWY")}
-    ss_map = {'H': 0, 'E': 1, 'C': 2}
-    
-    # Быстрое обучение
-    model = BioModel()
-    opt = optim.Adam(model.parameters(), lr=0.01)
-    loss_fn = nn.CrossEntropyLoss(ignore_index=2)
-    
-    progress = st.progress(0)
-    status = st.empty()
-    
-    for epoch in range(5): # 5 эпох хватит для демо
-        for i in range(0, len(df), 32):
-            batch = df.iloc[i:i+32]
-            # Подготовка данных (упрощенно)
-            x_list = []
-            y_list = []
-            for _, row in batch.iterrows():
-                seq = [aa_map.get(c, 0) for c in str(row[0])[:60]]
-                lbl = [ss_map.get(c, 2) for c in str(row[1])[:60]]
-                x_list.append(seq + [0]*(60-len(seq)))
-                y_list.append(lbl + [2]*(60-len(lbl)))
-            
-            x = torch.tensor(x_list)
-            y = torch.tensor(y_list)
-            
-            opt.zero_grad()
-            pred = model(x)
-            loss = loss_fn(pred, y)
-            loss.backward()
-            opt.step()
-        
-        progress.progress((epoch+1)/5)
-        status.text(f"Обучение Сфирали... Эпоха {epoch+1}/5 | Точность растет")
-    
-    status.success("✅ Модель готова к работе!")
-    return model, aa_map
+    # ЗАГЛУШКИ ДЛЯ ОСТАЛЬНЫХ (Базовые значения Alpha-Helix)
+    'DEFAULT': {'aa': '?', 'phi': -60, 'psi': -45, 'delay': 1.0}
+}
 
-model, aa_map = load_and_train()
+def get_codon_params(codon):
+    return TIME_GENETICS_MAP.get(codon, TIME_GENETICS_MAP['DEFAULT'])
 
-# --- 4. ВИЗУАЛИЗАЦИЯ ---
+# --- 2. ЗАГРУЗКА ДАННЫХ (ФАЙЛ ИЛИ ТЕКСТ) ---
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("Ввод данных")
-    custom_seq = st.text_area("Введите последовательность аминокислот:", "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHG")
-    if st.button("СВЕРНУТЬ БЕЛОК 🌀"):
-        # Предсказание
-        tokens = [aa_map.get(c, 0) for c in custom_seq]
-        x_in = torch.tensor([tokens + [0]*(60-len(tokens))])
-        with torch.no_grad():
-            res = model(x_in).argmax(1)[0].numpy()
-        
-        # Генерация 3D координат (Имитация фолдинга)
-        coords = [[0,0,0]]
-        colors = []
-        labels = []
-        
-        # Простая "Черепашья графика" для 3D
-        for i, type_idx in enumerate(res[:len(custom_seq)]):
-            prev = coords[-1]
-            if type_idx == 0: # HELIX (Спираль) - Красный
-                angle = i * 0.5
-                new_pt = [prev[0] + np.cos(angle), prev[1] + np.sin(angle), prev[2] + 0.5]
-                colors.append('red')
-                labels.append(f"Helix ({custom_seq[i]})")
-            elif type_idx == 1: # SHEET (Лист) - Синий
-                new_pt = [prev[0] + 1, prev[1] + (1 if i%2==0 else -1), prev[2]]
-                colors.append('blue')
-                labels.append(f"Sheet ({custom_seq[i]})")
-            else: # COIL (Клубок) - Серый
-                new_pt = [prev[0] + np.random.uniform(-0.5, 1), prev[1] + np.random.uniform(-0.5, 1), prev[2] + np.random.uniform(-0.5, 1)]
-                colors.append('gray')
-                labels.append(f"Coil ({custom_seq[i]})")
-            coords.append(new_pt)
+    st.subheader("📥 Ввод Последовательности (CDS)")
+    st.info("Загрузите ДНК-последовательность (Нуклеотиды: A, T, G, C)")
+    
+    # >>> ВОТ ЭТО НУЖНО КУШЕЛЕВУ (Загрузчик файлов) <<<
+    uploaded_file = st.file_uploader("Перетащите файл сюда (.txt, .fasta)", type=["txt", "fasta"])
+    
+    # Или ручной ввод
+    dna_input = st.text_area("Или введите вручную:", height=150, placeholder="Например: AAA AAA AAA AAG AAG AAG...")
 
-        # Рисуем
-        x_c, y_c, z_c = zip(*coords)
-        fig = go.Figure(data=[go.Scatter3d(
-            x=x_c, y=y_c, z=z_c,
-            mode='lines+markers',
-            marker=dict(size=6, color=colors),
-            line=dict(color='white', width=3),
-            text=labels
-        )])
-        fig.update_layout(scene=dict(aspectmode='data'), height=600, template="plotly_dark")
-        
-        st.session_state['fig'] = fig
+    # Обработка ввода
+    sequence = ""
+    if uploaded_file is not None:
+        stringio = uploaded_file.getvalue().decode("utf-8")
+        sequence = stringio.replace("\n", "").replace(" ", "").upper()
+    elif dna_input:
+        sequence = dna_input.replace("\n", "").replace(" ", "").upper()
 
+    if sequence:
+        # Проверка на кратность 3 (Кодоны)
+        if len(sequence) % 3 != 0:
+            st.error(f"⚠ Длина ДНК ({len(sequence)}) не делится на 3! Это не полная кодирующая последовательность.")
+        else:
+            st.success(f"✅ Загружено {len(sequence)//3} кодонов.")
+
+# --- 3. АЛГОРИТМ СВОРАЧИВАНИЯ ---
+def generate_structure_from_time(dna_seq):
+    """
+    Генерирует PDB-файл на основе Временных задержек кодонов.
+    """
+    codons = [dna_seq[i:i+3] for i in range(0, len(dna_seq), 3)]
+    
+    # Упрощенная генерация координат "хребта" (Backbone)
+    # В реальности здесь сложная матричная математика, для демо - линейное наращивание углов
+    pdb_str = ""
+    atom_id = 1
+    res_id = 1
+    
+    # Начальная точка
+    x, y, z = 0.0, 0.0, 0.0
+    
+    for codon in codons:
+        params = get_codon_params(codon)
+        aa_name = "LYS" if params['aa'] == 'K' else "ALA" # Упрощение для визуализации
+        
+        # МАГИЯ ВРЕМЕНИ: Угол зависит от кодона!
+        # AAA поворачивает "круче", AAG "положе"
+        phi = params['phi']
+        psi = params['psi']
+        
+        # Симуляция шага спирали (примитивная тригонометрия для демо)
+        x += 1.5 * np.cos(np.radians(phi))
+        y += 1.5 * np.sin(np.radians(phi))
+        z += 0.8 # Шаг вверх по спирали
+        
+        # Формируем строку PDB (Atom CA - Alpha Carbon)
+        pdb_str += f"ATOM  {atom_id:5d}  CA  {aa_name} A{res_id:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00 {params['delay']:5.2f}           C\n"
+        
+        atom_id += 1
+        res_id += 1
+        
+    return pdb_str, codons
+
+# --- 4. ВИЗУАЛИЗАЦИЯ ---
 with col2:
-    if 'fig' in st.session_state:
-        st.plotly_chart(st.session_state['fig'], use_container_width=True)
-        st.info("🔴 Красный = Спираль (Сфираль) | 🔵 Синий = Лист | ⚪ Серый = Клубок")
+    st.subheader("🧬 3D-Симуляция Структуры")
+    
+    if sequence and len(sequence) % 3 == 0:
+        pdb_data, parsed_codons = generate_structure_from_time(sequence)
+        
+        # Статистика
+        aaa_count = parsed_codons.count('AAA')
+        aag_count = parsed_codons.count('AAG')
+        
+        st.write(f"**Анализ состава:** AAA (Fast): {aaa_count} | AAG (Slow): {aag_count}")
+        
+        if aag_count > 0 and aaa_count > 0:
+            st.warning("Обнаружена программная аллотропия! Один и тот же белок будет иметь разную форму.")
+        
+        # Рендер
+        view = py3dmol.view(width=600, height=400)
+        view.addModel(pdb_data, 'pdb')
+        view.setStyle({'stick': {'radius': 0.2}, 'sphere': {'scale': 0.3}})
+        
+        # Раскраска по "Времени" (B-factor)
+        # Синий = Быстро (AAA), Красный = Медленно (AAG)
+        view.setStyle({'cartoon': {'colorscheme': {'prop': 'b', 'gradient': 'roygb', 'min': 1, 'max': 1.5}}})
+        
+        view.zoomTo()
+        output = view._make_html()
+        st.components.v1.html(output, width=600, height=400)
+        
+        st.download_button("Скачать PDB-структуру", pdb_data, "sfiral_model.pdb")
+
     else:
-        st.write("Нажмите кнопку слева, чтобы запустить процесс.")
+        st.info("Ожидание данных... Загрузите файл или введите текст.")
