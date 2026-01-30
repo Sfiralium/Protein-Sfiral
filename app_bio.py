@@ -1,4 +1,24 @@
 import streamlit as st
+import sys
+import subprocess
+import time
+
+# --- 🚑 БЛОК АВТО-УСТАНОВКИ (SELF-HEALING) ---
+# Если сервер "забыл" про requirements.txt, этот код установит библиотеки принудительно.
+def install_libs():
+    libs = ["py3dmol", "biopython", "numpy"]
+    for lib in libs:
+        try:
+            __import__(lib)
+        except ImportError:
+            # st.warning(f"Устанавливаю {lib} вручную...") # Скрытая установка
+            subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
+
+# Запускаем проверку ДО всего остального
+install_libs()
+# ---------------------------------------------
+
+# Теперь, когда всё установлено, импортируем спокойно
 import py3dmol
 from Bio.Seq import Seq
 import numpy as np
