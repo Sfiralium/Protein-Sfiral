@@ -1,26 +1,5 @@
 import streamlit as st
-import sys
-import subprocess
-import time
-
-# --- 🚑 БЛОК АВТО-ЛЕЧЕНИЯ (FORCE INSTALL) ---
-# Если сервер Streamlit ленится читать requirements.txt, мы заставим его скачать библиотеки прямо здесь.
-def force_install(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-try:
-    import py3dmol
-except ImportError:
-    force_install("py3dmol")
-    import py3dmol
-
-try:
-    import Bio
-except ImportError:
-    force_install("biopython")
-    import Bio
-# ---------------------------------------------
-
+import py3dmol
 from Bio.Seq import Seq
 import numpy as np
 
