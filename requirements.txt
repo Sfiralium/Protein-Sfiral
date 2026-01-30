@@ -1,6 +1,4 @@
 streamlit>=1.30.0
-torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
-torchvision>=0.15.0 --index-url https://download.pytorch.org/whl/cpu
-pandas
-numpy
+py3dmol
 biopython
+numpy
