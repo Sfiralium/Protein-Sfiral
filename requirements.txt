@@ -1,6 +1,5 @@
 streamlit
 numpy
+matplotlib
 py3Dmol
 stmol
-ipywidgets
-ipython_genutils
